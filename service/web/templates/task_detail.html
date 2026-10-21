@@ -22,10 +22,14 @@
 {{if eq .Task.LastStatus "failed"}}<p class="alert alert-error" role="alert">错误：{{.Task.LastError}}</p>{{end}}
 <div class="actions">
 <a class="btn" href="/tasks/{{.Task.ID}}/edit">编辑</a>
+{{if eq .Task.LastStatus "running"}}
+<a class="btn btn-primary" href="#sync-logs">同步详情</a>
+{{else}}
 <form action="/tasks/{{.Task.ID}}/sync" method="post">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <button class="btn btn-primary" type="submit">立即同步</button>
 </form>
+{{end}}
 <form action="/tasks/{{.Task.ID}}/toggle" method="post">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <input type="hidden" name="enabled" value="{{if .Task.Enabled}}0{{else}}1{{end}}">
@@ -36,7 +40,7 @@
 <button class="btn btn-danger" type="submit">删除</button>
 </form>
 </div>
-<h2>同步记录</h2>
+<h2 id="sync-logs">同步记录</h2>
 <section class="panel">
 {{if .Logs}}
 <div class="table-wrap">

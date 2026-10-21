@@ -389,6 +389,60 @@ func TestTaskToggleReenable(t *testing.T) {
 	}
 }
 
+func TestTaskSyncActionFollowsRunningStatus(t *testing.T) {
+	store := &fakeTaskStore{tasks: []SyncTask{
+		{ID: 1, Name: "idle-nginx", LastStatus: "idle"},
+		{ID: 2, Name: "running-nginx", LastStatus: "running"},
+	}}
+	h := testTaskRouter(store, nil)
+	cookie := doLogin(t, h)
+
+	list := httptest.NewRequest(http.MethodGet, "/tasks", nil)
+	list.AddCookie(cookie)
+	listRec := httptest.NewRecorder()
+	h.ServeHTTP(listRec, list)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("列表 status=%d body=%s", listRec.Code, listRec.Body.String())
+	}
+	listBody := listRec.Body.String()
+	if !strings.Contains(listBody, `action="/tasks/1/sync"`) || !strings.Contains(listBody, "立即同步") {
+		t.Fatalf("空闲任务应保留立即同步: %s", listBody)
+	}
+	if !strings.Contains(listBody, `href="/tasks/2">同步详情</a>`) {
+		t.Fatalf("同步中任务应显示同步详情: %s", listBody)
+	}
+	if strings.Contains(listBody, `action="/tasks/2/sync"`) {
+		t.Fatalf("同步中任务不应再提交立即同步: %s", listBody)
+	}
+
+	running := httptest.NewRequest(http.MethodGet, "/tasks/2", nil)
+	running.AddCookie(cookie)
+	runningRec := httptest.NewRecorder()
+	h.ServeHTTP(runningRec, running)
+	if runningRec.Code != http.StatusOK {
+		t.Fatalf("详情 status=%d body=%s", runningRec.Code, runningRec.Body.String())
+	}
+	runningBody := runningRec.Body.String()
+	if !strings.Contains(runningBody, `href="#sync-logs">同步详情</a>`) || !strings.Contains(runningBody, `id="sync-logs"`) {
+		t.Fatalf("同步中详情应链到同步记录: %s", runningBody)
+	}
+	if strings.Contains(runningBody, `action="/tasks/2/sync"`) || strings.Contains(runningBody, "立即同步") {
+		t.Fatalf("同步中详情不应再提交立即同步: %s", runningBody)
+	}
+
+	idle := httptest.NewRequest(http.MethodGet, "/tasks/1", nil)
+	idle.AddCookie(cookie)
+	idleRec := httptest.NewRecorder()
+	h.ServeHTTP(idleRec, idle)
+	if idleRec.Code != http.StatusOK {
+		t.Fatalf("空闲详情 status=%d body=%s", idleRec.Code, idleRec.Body.String())
+	}
+	idleBody := idleRec.Body.String()
+	if !strings.Contains(idleBody, `action="/tasks/1/sync"`) || !strings.Contains(idleBody, "立即同步") {
+		t.Fatalf("空闲详情应保留立即同步: %s", idleBody)
+	}
+}
+
 func TestTaskListShowsStatusAndFailure(t *testing.T) {
 	store := &fakeTaskStore{tasks: []SyncTask{{
 		ID:         1,

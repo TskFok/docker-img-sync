@@ -45,10 +45,14 @@
 <td>
 <div class="actions">
 <a class="btn" href="/tasks/{{.ID}}/edit">编辑</a>
+{{if eq .LastStatus "running"}}
+<a class="btn" href="/tasks/{{.ID}}">同步详情</a>
+{{else}}
 <form action="/tasks/{{.ID}}/sync" method="post">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <button class="btn" type="submit">立即同步</button>
 </form>
+{{end}}
 <form action="/tasks/{{.ID}}/toggle" method="post">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">
 <input type="hidden" name="enabled" value="{{if .Enabled}}0{{else}}1{{end}}">
