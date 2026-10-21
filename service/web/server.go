@@ -282,4 +282,9 @@ type pageData struct {
 	Task        SyncTask
 	Logs        []SyncLog
 	Message     string
+	LogPage     int
+	LogPages    int
+	LogTotal    int
+	LogPrevURL  string
+	LogNextURL  string
 }

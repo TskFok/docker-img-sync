@@ -70,6 +70,13 @@
 </tbody>
 </table>
 </div>
+{{if gt .LogPages 1}}
+<nav class="pager" aria-label="同步记录分页">
+{{if .LogPrevURL}}<a class="btn" href="{{.LogPrevURL}}">上一页</a>{{else}}<span class="btn" aria-disabled="true">上一页</span>{{end}}
+<span class="pager-status">第 {{.LogPage}} / {{.LogPages}} 页，共 {{.LogTotal}} 条</span>
+{{if .LogNextURL}}<a class="btn" href="{{.LogNextURL}}">下一页</a>{{else}}<span class="btn" aria-disabled="true">下一页</span>{{end}}
+</nav>
+{{end}}
 {{else}}
 <div class="empty">
 <strong>还没有同步记录</strong>

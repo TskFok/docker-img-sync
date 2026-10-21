@@ -304,6 +304,15 @@ tr:last-child td { border-bottom: 0; }
 .err-text { margin: 6px 0 0; color: #8f2a24; font-size: 13px; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .actions form { margin: 0; }
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+.pager-status { color: var(--muted); font-size: 14px; font-weight: 600; }
+.btn[aria-disabled="true"] { opacity: 0.45; pointer-events: none; cursor: default; }
 .btn {
   display: inline-flex;
   align-items: center;

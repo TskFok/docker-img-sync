@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"html"
 	"net/http"
 	"net/http/httptest"
@@ -36,8 +37,23 @@ func (f *fakeTaskStore) GetTask(ctx context.Context, id int32) (SyncTask, error)
 	return SyncTask{}, errors.New("任务不存在")
 }
 
-func (f *fakeTaskStore) ListLogs(ctx context.Context, taskID int32) ([]SyncLog, error) {
-	return f.logs, nil
+func (f *fakeTaskStore) ListLogs(ctx context.Context, taskID int32, page, size int) ([]SyncLog, int, error) {
+	total := len(f.logs)
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 || total == 0 {
+		return append([]SyncLog(nil), f.logs...), total, nil
+	}
+	start := (page - 1) * size
+	if start >= total {
+		return nil, total, nil
+	}
+	end := start + size
+	if end > total {
+		end = total
+	}
+	return append([]SyncLog(nil), f.logs[start:end]...), total, nil
 }
 
 func (f *fakeTaskStore) CreateTask(ctx context.Context, task SyncTask, now time.Time) error {
@@ -654,5 +670,139 @@ func TestTaskFormShowsSameAsSource(t *testing.T) {
 	}
 	if strings.Count(rec.Body.String(), "与源相同") < 2 {
 		t.Fatalf("目标仓库名和 tag 应说明与源相同: %s", rec.Body.String())
+	}
+}
+
+func detailLogs(n int) []SyncLog {
+	logs := make([]SyncLog, n)
+	for i := range logs {
+		logs[i] = SyncLog{
+			Trigger:    "manual",
+			Status:     "success",
+			Message:    fmt.Sprintf("记录-%02d", i+1),
+			StartedAt:  time.Date(2026, 10, 21, 12, 0, i, 0, time.UTC),
+			FinishedAt: time.Date(2026, 10, 21, 12, 1, i, 0, time.UTC),
+		}
+	}
+	return logs
+}
+
+func taskDetailPage(t *testing.T, logs []SyncLog, rawURL string) string {
+	t.Helper()
+	h := testTaskRouter(&fakeTaskStore{
+		tasks: []SyncTask{{ID: 7, Name: "nginx", LastStatus: "idle"}},
+		logs:  logs,
+	}, nil)
+	cookie := doLogin(t, h)
+	req := httptest.NewRequest(http.MethodGet, rawURL, nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	return rec.Body.String()
+}
+
+func TestTaskDetailPaginatesSyncLogs(t *testing.T) {
+	body := taskDetailPage(t, detailLogs(21), "/tasks/7")
+	if strings.Count(body, `data-label="触发"`) != 20 {
+		t.Fatalf("第一页应只显示 20 条同步记录: %s", body)
+	}
+	if !strings.Contains(body, "记录-01") || !strings.Contains(body, "记录-20") {
+		t.Fatal("第一页应包含最新的 20 条记录")
+	}
+	if strings.Contains(body, "记录-21") {
+		t.Fatal("第一页不应包含下一页的记录")
+	}
+	for _, want := range []string{
+		`aria-label="同步记录分页"`,
+		`第 1 / 2 页`,
+		`共 21 条`,
+		`href="/tasks/7?page=2"`,
+		`aria-disabled="true"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("分页应包含 %q", want)
+		}
+	}
+	if strings.Contains(body, ">上一页</a>") {
+		t.Fatal("第一页不应有上一页链接")
+	}
+}
+
+func TestTaskDetailSyncLogSecondPage(t *testing.T) {
+	body := taskDetailPage(t, detailLogs(21), "/tasks/7?page=2")
+	if strings.Count(body, `data-label="触发"`) != 1 || !strings.Contains(body, "记录-21") {
+		t.Fatal("第二页应只显示剩余的一条记录")
+	}
+	if strings.Contains(body, "记录-01") || strings.Contains(body, "记录-20") {
+		t.Fatal("第二页不应包含第一页的记录")
+	}
+	for _, want := range []string{
+		`第 2 / 2 页`,
+		`共 21 条`,
+		`href="/tasks/7">上一页</a>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("第二页应包含 %q", want)
+		}
+	}
+	if strings.Contains(body, `href="/tasks/7?page=3"`) || strings.Contains(body, ">下一页</a>") {
+		t.Fatal("最后一页不应有下一页链接")
+	}
+}
+
+func TestTaskDetailInvalidLogPageShowsFirstPage(t *testing.T) {
+	for _, rawURL := range []string{"/tasks/7?page=0", "/tasks/7?page=-4", "/tasks/7?page=abc"} {
+		body := taskDetailPage(t, detailLogs(21), rawURL)
+		if !strings.Contains(body, "记录-01") || strings.Contains(body, "记录-21") {
+			t.Fatalf("%s 应回到第一页", rawURL)
+		}
+	}
+}
+
+func TestTaskDetailLogPagePastEndRedirectsToLastPage(t *testing.T) {
+	h := testTaskRouter(&fakeTaskStore{
+		tasks: []SyncTask{{ID: 7, Name: "nginx", LastStatus: "idle"}},
+		logs:  detailLogs(21),
+	}, nil)
+	cookie := doLogin(t, h)
+	req := httptest.NewRequest(http.MethodGet, "/tasks/7?page=9&msg=已完成", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusFound {
+		t.Fatalf("超出末页应跳转，status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	q := url.Values{}
+	q.Set("msg", "已完成")
+	q.Set("page", "2")
+	want := "/tasks/7?" + q.Encode()
+	if rec.Header().Get("Location") != want {
+		t.Fatalf("Location=%q，期望 %q", rec.Header().Get("Location"), want)
+	}
+}
+
+func TestTaskDetailLogPagerKeepsMessage(t *testing.T) {
+	body := taskDetailPage(t, detailLogs(21), "/tasks/7?page=2&msg=已完成")
+	if !strings.Contains(body, "已完成") {
+		t.Fatal("翻页后应保留提示")
+	}
+	q := url.Values{}
+	q.Set("msg", "已完成")
+	prev := "/tasks/7?" + q.Encode()
+	if !strings.Contains(body, `href="`+prev+`"`) {
+		t.Fatalf("上一页应保留提示: %s", body)
+	}
+}
+
+func TestTaskDetailOmitsPagerForSinglePage(t *testing.T) {
+	body := taskDetailPage(t, detailLogs(3), "/tasks/7")
+	if strings.Contains(body, `aria-label="同步记录分页"`) {
+		t.Fatal("不足一页时不显示分页")
+	}
+	if strings.Count(body, `data-label="触发"`) != 3 {
+		t.Fatal("不足一页时应显示全部记录")
 	}
 }

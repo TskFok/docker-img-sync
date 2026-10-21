@@ -218,11 +218,26 @@ func (s *MySQLStore) GetTask(ctx context.Context, id int32) (SyncTask, error) {
 	return toWebTask(row), nil
 }
 
-// ListLogs 按 id 倒序返回，页面按该顺序展示，不再排序。
-func (s *MySQLStore) ListLogs(ctx context.Context, taskID int32) ([]SyncLog, error) {
+// ListLogs 按 id 倒序返回指定页。调用方按该顺序展示，不再排序。
+func (s *MySQLStore) ListLogs(ctx context.Context, taskID int32, page, size int) ([]SyncLog, int, error) {
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 {
+		size = syncLogPageSize
+	}
+	var total int64
+	if err := s.db.WithContext(ctx).Model(&model.SyncLog{}).Where("sync_task_id = ?", taskID).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	var rows []model.SyncLog
-	if err := s.db.WithContext(ctx).Where("sync_task_id = ?", taskID).Order("id DESC").Find(&rows).Error; err != nil {
-		return nil, err
+	if err := s.db.WithContext(ctx).
+		Where("sync_task_id = ?", taskID).
+		Order("id DESC").
+		Limit(size).
+		Offset((page - 1) * size).
+		Find(&rows).Error; err != nil {
+		return nil, 0, err
 	}
 	out := make([]SyncLog, len(rows))
 	for i, row := range rows {
@@ -235,7 +250,7 @@ func (s *MySQLStore) ListLogs(ctx context.Context, taskID int32) ([]SyncLog, err
 			FinishedAt:   row.FinishedAt,
 		}
 	}
-	return out, nil
+	return out, int(total), nil
 }
 
 func (s *MySQLStore) CreateTask(ctx context.Context, task SyncTask, now time.Time) error {
