@@ -90,7 +90,7 @@ func Run(ctx context.Context, eng Engine, task Task, now func() time.Time) (resu
 		return result
 	}
 
-	if err := eng.Copy(ctx, normalized, dst, task.SourceAuth, task.DestAuth); err != nil {
+	if err := eng.Copy(ctx, normalized, dst, task.SourceAuth, task.DestAuth, nil); err != nil {
 		result.Status = "failed"
 		result.Message = safeMessage(err, task.SourceAuth, task.DestAuth)
 		return result

@@ -257,7 +257,7 @@ func (f *filteredIndex) ImageIndex(h v1.Hash) (v1.ImageIndex, error) {
 	return f.base.ImageIndex(h)
 }
 
-func (c *Crane) Copy(ctx context.Context, src, dst string, srcAuth, dstAuth *Auth) error {
+func (c *Crane) Copy(ctx context.Context, src, dst string, srcAuth, dstAuth *Auth, progress func(phase string) error) error {
 	srcRef, err := name.ParseReference(src)
 	if err != nil {
 		return err
@@ -281,6 +281,11 @@ func (c *Crane) Copy(ctx context.Context, src, dst string, srcAuth, dstAuth *Aut
 	taggable, err = prepareForRegistry(dstRef, taggable)
 	if err != nil {
 		return err
+	}
+	if progress != nil {
+		if err := progress(PhaseCopy); err != nil {
+			return err
+		}
 	}
 	pusher, err := remote.NewPusher(remote.WithAuth(authenticator(dstAuth)), remote.WithTransport(http.DefaultTransport))
 	if err != nil {

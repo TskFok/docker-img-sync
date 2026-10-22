@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -96,7 +97,7 @@ func TestCopyDropsEmptyConfigManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := NewCrane().Copy(context.Background(), src+"/app:latest", dst+"/app:latest", nil, nil); err != nil {
+	if err := NewCrane().Copy(context.Background(), src+"/app:latest", dst+"/app:latest", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	got, err := remote.Get(mustRef(t, dst+"/app:latest"))
@@ -117,6 +118,53 @@ func TestCopyDropsEmptyConfigManifest(t *testing.T) {
 	}
 	if mf.Config.MediaType == types.OCIEmptyJSON {
 		t.Fatalf("空配置清单被推送: %s", child.Manifest)
+	}
+}
+
+func TestCopyReportsPhaseBeforePush(t *testing.T) {
+	src := startRegistry(t, false)
+	dst := startRegistry(t, false)
+	image := mutate.MediaType(empty.Image, types.OCIManifestSchema1)
+	if err := remote.Write(mustRef(t, src+"/app:latest"), image); err != nil {
+		t.Fatal(err)
+	}
+	var phases []string
+	err := NewCrane().Copy(context.Background(), src+"/app:latest", dst+"/app:latest", nil, nil, func(phase string) error {
+		phases = append(phases, phase)
+		if _, getErr := remote.Get(mustRef(t, dst+"/app:latest")); getErr == nil {
+			t.Fatal("回调时目标标签不应已存在")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(phases) != 1 || phases[0] != PhaseCopy {
+		t.Fatalf("phases=%v", phases)
+	}
+	if _, err := remote.Get(mustRef(t, dst+"/app:latest")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCopyStopsWhenPhaseCallbackFails(t *testing.T) {
+	src := startRegistry(t, false)
+	dst := startRegistry(t, false)
+	image := mutate.MediaType(empty.Image, types.OCIManifestSchema1)
+	if err := remote.Write(mustRef(t, src+"/app:latest"), image); err != nil {
+		t.Fatal(err)
+	}
+	err := NewCrane().Copy(context.Background(), src+"/app:latest", dst+"/app:latest", nil, nil, func(phase string) error {
+		if phase != PhaseCopy {
+			t.Fatalf("phase=%s", phase)
+		}
+		return errPhaseSave
+	})
+	if !errors.Is(err, errPhaseSave) {
+		t.Fatalf("got %v", err)
+	}
+	if _, getErr := remote.Get(mustRef(t, dst+"/app:latest")); getErr == nil {
+		t.Fatal("阶段回调失败后不应推送")
 	}
 }
 

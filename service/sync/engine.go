@@ -9,5 +9,5 @@ type Auth struct {
 
 type Engine interface {
 	Digest(ctx context.Context, ref string, auth *Auth) (string, error)
-	Copy(ctx context.Context, src, dst string, srcAuth, dstAuth *Auth) error
+	Copy(ctx context.Context, src, dst string, srcAuth, dstAuth *Auth, progress func(phase string) error) error
 }

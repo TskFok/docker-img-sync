@@ -250,7 +250,12 @@ func (b *blockingEngine) Digest(ctx context.Context, ref string, auth *Auth) (st
 	return b.digest, nil
 }
 
-func (b *blockingEngine) Copy(ctx context.Context, src, dst string, srcAuth, dstAuth *Auth) error {
+func (b *blockingEngine) Copy(ctx context.Context, src, dst string, srcAuth, dstAuth *Auth, progress func(phase string) error) error {
+	if progress != nil {
+		if err := progress(PhaseCopy); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -27,7 +27,12 @@ func (f *fakeEngine) Digest(ctx context.Context, ref string, auth *Auth) (string
 	return f.digest, f.digestErr
 }
 
-func (f *fakeEngine) Copy(ctx context.Context, src, dst string, srcAuth, dstAuth *Auth) error {
+func (f *fakeEngine) Copy(ctx context.Context, src, dst string, srcAuth, dstAuth *Auth, progress func(phase string) error) error {
+	if progress != nil {
+		if err := progress(PhaseCopy); err != nil {
+			return err
+		}
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.copyCount++
