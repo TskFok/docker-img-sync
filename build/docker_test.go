@@ -72,9 +72,9 @@ func TestDockerImageBuildContract(t *testing.T) {
 		"TAG ?= latest",
 		"docker-build: docker-build-amd64 docker-build-arm64",
 		"docker-build-amd64: require-docker",
-		"docker buildx build --platform linux/amd64 --load -t $(IMAGE):$(TAG)-amd64 .",
+		"docker buildx build --platform linux/amd64 --provenance=false --sbom=false --load -t $(IMAGE):$(TAG)-amd64 .",
 		"docker-build-arm64: require-docker",
-		"docker buildx build --platform linux/arm64 --load -t $(IMAGE):$(TAG)-arm64 .",
+		"docker buildx build --platform linux/arm64 --provenance=false --sbom=false --load -t $(IMAGE):$(TAG)-arm64 .",
 		"未安装 Docker，无法构建镜像",
 		"未安装 Docker buildx，无法跨平台构建镜像",
 	})

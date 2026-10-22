@@ -33,6 +33,7 @@ func TestWithoutAttestationsDropsAnnotatedChildren(t *testing.T) {
 		Size:      2190,
 		Digest:    mustHash(t, "sha256:daff148274c7d28548185931ff9a49e338c478ef633f0976e1c8bbe0ba6861a2"),
 		Platform:  &v1.Platform{OS: "linux", Architecture: "amd64"},
+		Data:      manifestWithConfig(t, types.OCIConfigJSON),
 	}
 	attestation := v1.Descriptor{
 		MediaType: types.OCIManifestSchema1,
@@ -64,6 +65,8 @@ func TestWithoutAttestationsKeepsIndexBytes(t *testing.T) {
 		MediaType: types.OCIManifestSchema1,
 		Size:      2190,
 		Digest:    mustHash(t, "sha256:daff148274c7d28548185931ff9a49e338c478ef633f0976e1c8bbe0ba6861a2"),
+		Platform:  &v1.Platform{OS: "linux", Architecture: "amd64"},
+		Data:      manifestWithConfig(t, types.OCIConfigJSON),
 	}
 	desc := indexDescriptor(t, types.DockerManifestList, image)
 	original := append([]byte(nil), desc.Manifest...)
@@ -119,6 +122,125 @@ func TestWithoutAttestationsRejectsInvalidIndex(t *testing.T) {
 	if _, err := withoutAttestations(desc); err == nil {
 		t.Fatal("非法索引应失败")
 	}
+}
+
+func TestWithoutAttestationsDropsUnknownPlatform(t *testing.T) {
+	image := v1.Descriptor{
+		MediaType: types.OCIManifestSchema1,
+		Size:      2190,
+		Digest:    mustHash(t, "sha256:daff148274c7d28548185931ff9a49e338c478ef633f0976e1c8bbe0ba6861a2"),
+		Platform:  &v1.Platform{OS: "linux", Architecture: "amd64"},
+		Data:      manifestWithConfig(t, types.OCIConfigJSON),
+	}
+	attestation := v1.Descriptor{
+		MediaType: types.OCIManifestSchema1,
+		Size:      1112,
+		Digest:    mustHash(t, "sha256:fb16e77db25b300c89dad824934db669056184575d0ceeb03b3804fdb6cc98c7"),
+		Platform:  &v1.Platform{OS: "unknown", Architecture: "unknown"},
+	}
+	desc := indexDescriptor(t, types.OCIImageIndex, image, attestation)
+
+	got, err := withoutAttestations(desc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifests := indexManifests(t, got)
+	if len(manifests) != 1 || manifests[0].Digest != image.Digest {
+		t.Fatalf("保留的清单 = %+v", manifests)
+	}
+}
+
+func TestWithoutAttestationsDropsEmptyConfigWithoutAnnotation(t *testing.T) {
+	image := v1.Descriptor{
+		MediaType: types.OCIManifestSchema1,
+		Size:      2190,
+		Digest:    mustHash(t, "sha256:daff148274c7d28548185931ff9a49e338c478ef633f0976e1c8bbe0ba6861a2"),
+		Platform:  &v1.Platform{OS: "linux", Architecture: "amd64"},
+		Data:      manifestWithConfig(t, types.OCIConfigJSON),
+	}
+	emptyConfig := v1.Descriptor{
+		MediaType: types.OCIManifestSchema1,
+		Size:      1112,
+		Digest:    mustHash(t, "sha256:fb16e77db25b300c89dad824934db669056184575d0ceeb03b3804fdb6cc98c7"),
+		Platform:  &v1.Platform{OS: "linux", Architecture: "amd64"},
+		Data:      manifestWithConfig(t, types.OCIEmptyJSON),
+	}
+	desc := indexDescriptor(t, types.OCIImageIndex, image, emptyConfig)
+
+	got, err := withoutAttestations(desc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifests := indexManifests(t, got)
+	if len(manifests) != 1 || manifests[0].Digest != image.Digest {
+		t.Fatalf("保留的清单 = %+v", manifests)
+	}
+}
+
+func TestWithoutAttestationsDropsIndexLabeledAsImage(t *testing.T) {
+	image := v1.Descriptor{
+		MediaType: types.OCIManifestSchema1,
+		Size:      2190,
+		Digest:    mustHash(t, "sha256:daff148274c7d28548185931ff9a49e338c478ef633f0976e1c8bbe0ba6861a2"),
+		Platform:  &v1.Platform{OS: "linux", Architecture: "amd64"},
+		Data:      manifestWithConfig(t, types.OCIConfigJSON),
+	}
+	attestation := v1.Descriptor{
+		MediaType: types.OCIManifestSchema1,
+		Size:      1112,
+		Digest:    mustHash(t, "sha256:fb16e77db25b300c89dad824934db669056184575d0ceeb03b3804fdb6cc98c7"),
+		Platform:  &v1.Platform{OS: "unknown", Architecture: "unknown"},
+		Annotations: map[string]string{
+			"vnd.docker.reference.type": "attestation-manifest",
+		},
+	}
+	raw, err := json.Marshal(v1.IndexManifest{
+		SchemaVersion: 2,
+		MediaType:     types.OCIImageIndex,
+		Manifests:     []v1.Descriptor{image, attestation},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	desc := &remote.Descriptor{
+		Descriptor: v1.Descriptor{MediaType: types.OCIManifestSchema1},
+		Manifest:   raw,
+	}
+	got, err := withoutAttestations(desc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifests := indexManifests(t, got)
+	if len(manifests) != 1 || manifests[0].Digest != image.Digest {
+		t.Fatalf("保留的清单 = %+v", manifests)
+	}
+}
+
+func TestWithoutAttestationsRejectsEmptyConfigImage(t *testing.T) {
+	desc := &remote.Descriptor{
+		Descriptor: v1.Descriptor{MediaType: types.OCIManifestSchema1},
+		Manifest:   manifestWithConfig(t, types.OCIEmptyJSON),
+	}
+	if _, err := withoutAttestations(desc); err == nil {
+		t.Fatal("空配置清单应失败")
+	}
+}
+
+func manifestWithConfig(t *testing.T, config types.MediaType) []byte {
+	t.Helper()
+	raw, err := json.Marshal(v1.Manifest{
+		SchemaVersion: 2,
+		MediaType:     types.OCIManifestSchema1,
+		Config: v1.Descriptor{
+			MediaType: config,
+			Digest:    mustHash(t, "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"),
+			Size:      2,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 func indexDescriptor(t *testing.T, mediaType types.MediaType, manifests ...v1.Descriptor) *remote.Descriptor {
