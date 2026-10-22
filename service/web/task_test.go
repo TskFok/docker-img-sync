@@ -424,8 +424,8 @@ func TestTaskSyncActionFollowsRunningStatus(t *testing.T) {
 	if !strings.Contains(listBody, `action="/tasks/1/sync"`) || !strings.Contains(listBody, "立即同步") {
 		t.Fatalf("空闲任务应保留立即同步: %s", listBody)
 	}
-	if !strings.Contains(listBody, `href="/logs">同步详情</a>`) {
-		t.Fatalf("同步中任务应进入同步记录: %s", listBody)
+	if strings.Contains(listBody, "同步详情") {
+		t.Fatalf("同步中列表不应再放同步详情: %s", listBody)
 	}
 	if strings.Contains(listBody, `action="/tasks/2/sync"`) {
 		t.Fatalf("同步中任务不应再提交立即同步: %s", listBody)
@@ -439,8 +439,8 @@ func TestTaskSyncActionFollowsRunningStatus(t *testing.T) {
 		t.Fatalf("详情 status=%d body=%s", runningRec.Code, runningRec.Body.String())
 	}
 	runningBody := runningRec.Body.String()
-	if !strings.Contains(runningBody, `href="/logs">同步详情</a>`) {
-		t.Fatalf("同步中详情应进入同步记录: %s", runningBody)
+	if strings.Contains(runningBody, "同步详情") {
+		t.Fatalf("同步中详情不应再放同步详情: %s", runningBody)
 	}
 	if strings.Contains(runningBody, `id="sync-logs"`) || strings.Contains(runningBody, `class="logs"`) {
 		t.Fatalf("任务详情不应再内嵌同步记录: %s", runningBody)
@@ -459,6 +459,56 @@ func TestTaskSyncActionFollowsRunningStatus(t *testing.T) {
 	idleBody := idleRec.Body.String()
 	if !strings.Contains(idleBody, `action="/tasks/1/sync"`) || !strings.Contains(idleBody, "立即同步") {
 		t.Fatalf("空闲详情应保留立即同步: %s", idleBody)
+	}
+}
+
+func TestTaskPhaseShownOnListAndDetail(t *testing.T) {
+	store := &fakeTaskStore{tasks: []SyncTask{
+		{ID: 1, Name: "running-nginx", LastStatus: "running", ProgressPhase: "digest"},
+		{ID: 2, Name: "failed-nginx", LastStatus: "failed", ProgressPhase: "copy", LastError: "拉取失败"},
+		{ID: 3, Name: "ok-nginx", LastStatus: "success"},
+	}}
+	h := testTaskRouter(store, nil)
+	cookie := doLogin(t, h)
+
+	list := httptest.NewRequest(http.MethodGet, "/tasks", nil)
+	list.AddCookie(cookie)
+	listRec := httptest.NewRecorder()
+	h.ServeHTTP(listRec, list)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("列表 status=%d body=%s", listRec.Code, listRec.Body.String())
+	}
+	listBody := listRec.Body.String()
+	for _, want := range []string{`class="phase-text"`, "检查摘要", "复制镜像", "拉取失败"} {
+		if !strings.Contains(listBody, want) {
+			t.Fatalf("列表应包含 %q: %s", want, listBody)
+		}
+	}
+	if strings.Contains(listBody, "同步详情") || strings.Contains(listBody, `action="/tasks/1/sync"`) {
+		t.Fatalf("同步中不应提供同步详情或立即同步: %s", listBody)
+	}
+	if !strings.Contains(listBody, `action="/tasks/3/sync"`) {
+		t.Fatalf("已结束任务应保留立即同步: %s", listBody)
+	}
+
+	detail := httptest.NewRequest(http.MethodGet, "/tasks/2", nil)
+	detail.AddCookie(cookie)
+	detailRec := httptest.NewRecorder()
+	h.ServeHTTP(detailRec, detail)
+	if detailRec.Code != http.StatusOK {
+		t.Fatalf("详情 status=%d body=%s", detailRec.Code, detailRec.Body.String())
+	}
+	detailBody := detailRec.Body.String()
+	if !strings.Contains(detailBody, "<dt>阶段</dt>") || !strings.Contains(detailBody, "复制镜像") || !strings.Contains(detailBody, "拉取失败") {
+		t.Fatalf("失败详情应显示阶段和错误: %s", detailBody)
+	}
+
+	idle := httptest.NewRequest(http.MethodGet, "/tasks/3", nil)
+	idle.AddCookie(cookie)
+	idleRec := httptest.NewRecorder()
+	h.ServeHTTP(idleRec, idle)
+	if strings.Contains(idleRec.Body.String(), "<dt>阶段</dt>") || strings.Contains(idleRec.Body.String(), "检查摘要") {
+		t.Fatalf("空阶段不应显示: %s", idleRec.Body.String())
 	}
 }
 

@@ -17,14 +17,13 @@
 <div><dt>检查间隔</dt><dd>{{.Task.IntervalText}}</dd></div>
 <div><dt>定时检查</dt><dd>{{if .Task.Enabled}}启用{{else}}关闭{{end}}</dd></div>
 <div><dt>状态</dt><dd><span class="badge badge-{{.Task.LastStatus}}">{{.Task.StatusText}} <span class="badge-code">{{.Task.LastStatus}}</span></span></dd></div>
+{{if .Task.ProgressPhase}}<div><dt>阶段</dt><dd>{{.Task.PhaseText}}</dd></div>{{end}}
 {{if .Task.LastSyncedAt}}<div><dt>最近同步</dt><dd>{{.Task.LastSyncedAt.Format "2006-01-02 15:04:05"}}</dd></div>{{end}}
 </dl>
 {{if eq .Task.LastStatus "failed"}}<p class="alert alert-error" role="alert">错误：{{.Task.LastError}}</p>{{end}}
 <div class="actions">
 <a class="btn" href="/tasks/{{.Task.ID}}/edit">编辑</a>
-{{if eq .Task.LastStatus "running"}}
-<a class="btn btn-primary" href="/logs">同步详情</a>
-{{else}}
+{{if ne .Task.LastStatus "running"}}
 <form action="/tasks/{{.Task.ID}}/sync" method="post">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <button class="btn btn-primary" type="submit">立即同步</button>

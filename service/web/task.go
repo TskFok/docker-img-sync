@@ -56,6 +56,10 @@ func (t SyncTask) StatusText() string {
 	return statusText(t.LastStatus)
 }
 
+func (t SyncTask) PhaseText() string {
+	return syncsvc.PhaseText(t.ProgressPhase)
+}
+
 func (t SyncTask) IntervalText() string {
 	if t.IntervalSeconds <= 0 {
 		return "仅手动"
