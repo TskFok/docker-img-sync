@@ -71,6 +71,10 @@ func TestParseSyncTaskDefaultsAndIndex(t *testing.T) {
 	if status.DefaultValue != "idle" {
 		t.Fatalf("last_status 默认值 = %q", status.DefaultValue)
 	}
+	phase := cols["progress_phase"]
+	if phase.TypeName != "varchar(16)" || phase.Nullable || !phase.HasDefault || phase.DefaultValue != "" {
+		t.Fatalf("progress_phase = %+v", phase)
+	}
 	sourceCred := cols["source_credential_id"]
 	if !sourceCred.Nullable || sourceCred.HasDefault {
 		t.Fatalf("source_credential_id = %+v", sourceCred)

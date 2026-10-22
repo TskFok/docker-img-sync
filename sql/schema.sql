@@ -36,6 +36,7 @@ CREATE TABLE `sync_task` (
   `enabled` tinyint NOT NULL DEFAULT 1,
   `last_digest` varchar(255) NOT NULL DEFAULT '',
   `last_status` varchar(32) NOT NULL DEFAULT 'idle',
+  `progress_phase` varchar(16) NOT NULL DEFAULT '',
   `last_error` text NOT NULL,
   `last_synced_at` datetime NULL,
   `next_run_at` datetime NULL,
