@@ -97,7 +97,7 @@ func (s *Scheduler) run(ctx context.Context, task Task, trigger string) {
 	defer s.unclaim(task.ID)
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
-	result := Run(ctx, s.eng, task, time.Now)
+	result := Run(ctx, s.eng, task, time.Now, func(string) error { return nil })
 	s.persistResult(task.ID, trigger, result)
 }
 

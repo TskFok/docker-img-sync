@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 )
@@ -30,7 +31,7 @@ type Result struct {
 	FinishedAt     time.Time
 }
 
-func Run(ctx context.Context, eng Engine, task Task, now func() time.Time) (result Result) {
+func Run(ctx context.Context, eng Engine, task Task, now func() time.Time, report func(phase string) error) (result Result) {
 	if now == nil {
 		now = time.Now
 	}
@@ -46,6 +47,20 @@ func Run(ctx context.Context, eng Engine, task Task, now func() time.Time) (resu
 			result.NextRunAt = &next
 		}
 	}()
+
+	save := func(phase string) error {
+		if report == nil {
+			return nil
+		}
+		if err := report(phase); err != nil {
+			return errPhaseSave
+		}
+		return nil
+	}
+	failSave := func() {
+		result.Status = "failed"
+		result.Message = phaseSaveMessage
+	}
 
 	if task.DestAuth == nil {
 		result.Status = "failed"
@@ -76,6 +91,10 @@ func Run(ctx context.Context, eng Engine, task Task, now func() time.Time) (resu
 		return result
 	}
 
+	if err := save(PhaseDigest); err != nil {
+		failSave()
+		return result
+	}
 	digest, err := eng.Digest(ctx, normalized, task.SourceAuth)
 	if err != nil {
 		result.Status = "failed"
@@ -90,9 +109,17 @@ func Run(ctx context.Context, eng Engine, task Task, now func() time.Time) (resu
 		return result
 	}
 
-	if err := eng.Copy(ctx, normalized, dst, task.SourceAuth, task.DestAuth, nil); err != nil {
+	if err := save(PhaseManifest); err != nil {
+		failSave()
+		return result
+	}
+	if err := eng.Copy(ctx, normalized, dst, task.SourceAuth, task.DestAuth, save); err != nil {
 		result.Status = "failed"
-		result.Message = safeMessage(err, task.SourceAuth, task.DestAuth)
+		if errors.Is(err, errPhaseSave) {
+			result.Message = phaseSaveMessage
+		} else {
+			result.Message = safeMessage(err, task.SourceAuth, task.DestAuth)
+		}
 		return result
 	}
 
