@@ -14,6 +14,7 @@ type SyncTask struct {
 	Enabled            bool       `gorm:"column:enabled"`
 	LastDigest         string     `gorm:"column:last_digest"`
 	LastStatus         string     `gorm:"column:last_status"`
+	ProgressPhase      string     `gorm:"column:progress_phase"`
 	LastError          string     `gorm:"column:last_error"`
 	LastSyncedAt       *time.Time `gorm:"column:last_synced_at"`
 	NextRunAt          *time.Time `gorm:"column:next_run_at"`

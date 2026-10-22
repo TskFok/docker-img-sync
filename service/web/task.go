@@ -25,6 +25,7 @@ type SyncTask struct {
 	Enabled            bool
 	LastDigest         string
 	LastStatus         string
+	ProgressPhase      string
 	LastError          string
 	LastSyncedAt       *time.Time
 	NextRunAt          *time.Time

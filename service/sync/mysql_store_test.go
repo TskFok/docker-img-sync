@@ -27,3 +27,39 @@ func TestSplitDecryptFailuresSkipsAndCollectsIDs(t *testing.T) {
 		t.Fatalf("last_error=%q", decryptFailedMessage)
 	}
 }
+
+func TestMarkRunningUpdatesStartsAtDigest(t *testing.T) {
+	updates := markRunningUpdates()
+	if updates["last_status"] != "running" || updates["progress_phase"] != PhaseDigest {
+		t.Fatalf("%#v", updates)
+	}
+}
+
+func TestFinishTaskUpdatesClearsPhaseOnlyWhenFinishedCleanly(t *testing.T) {
+	for _, status := range []string{"success", "skipped"} {
+		updates := finishTaskUpdates(Result{Status: status, Message: "保留"})
+		if updates["progress_phase"] != "" || updates["last_error"] != "" {
+			t.Fatalf("%s %#v", status, updates)
+		}
+	}
+	failed := finishTaskUpdates(Result{Status: "failed", Message: "拉取失败"})
+	if _, ok := failed["progress_phase"]; ok {
+		t.Fatalf("失败不应改阶段: %#v", failed)
+	}
+	if failed["last_status"] != "failed" || failed["last_error"] != "拉取失败" {
+		t.Fatalf("%#v", failed)
+	}
+}
+
+func TestResetRunningUpdatesKeepsPhase(t *testing.T) {
+	updates, status, message, trigger := resetRunningUpdates()
+	if status != "failed" || message != InterruptedMessage || trigger != "startup" {
+		t.Fatalf("%s %s %s", status, message, trigger)
+	}
+	if _, ok := updates["progress_phase"]; ok {
+		t.Fatalf("重置不应改阶段: %#v", updates)
+	}
+	if updates["last_status"] != "failed" || updates["last_error"] != InterruptedMessage {
+		t.Fatalf("%#v", updates)
+	}
+}

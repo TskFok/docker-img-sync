@@ -132,14 +132,49 @@ func (s *MySQLStore) markDecryptFailed(ctx context.Context, ids []int32) error {
 	}).Error
 }
 
+func markRunningUpdates() map[string]interface{} {
+	return map[string]interface{}{
+		"last_status":    "running",
+		"progress_phase": PhaseDigest,
+	}
+}
+
+func finishTaskUpdates(result Result) map[string]interface{} {
+	lastError := result.Message
+	if result.Status == "success" || result.Status == "skipped" {
+		lastError = ""
+	}
+	updates := map[string]interface{}{
+		"last_status":    result.Status,
+		"last_digest":    result.LastDigest,
+		"last_error":     lastError,
+		"last_synced_at": result.FinishedAt,
+		"next_run_at":    result.NextRunAt,
+	}
+	if result.Status == "success" || result.Status == "skipped" {
+		updates["progress_phase"] = ""
+	}
+	return updates
+}
+
+func resetRunningUpdates() (updates map[string]interface{}, status, message, trigger string) {
+	status, message, trigger, _ = Interrupted("running")
+	updates = map[string]interface{}{
+		"last_status": status,
+		"last_error":  message,
+	}
+	return updates, status, message, trigger
+}
+
+func (s *MySQLStore) SetPhase(ctx context.Context, id int32, phase string) error {
+	return s.db.WithContext(ctx).Model(&model.SyncTask{}).Where("id = ?", id).Update("progress_phase", phase).Error
+}
+
 func (s *MySQLStore) MarkRunning(ctx context.Context, ids []int32) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return s.db.WithContext(ctx).
-		Model(&model.SyncTask{}).
-		Where("id IN ?", ids).
-		Update("last_status", "running").Error
+	return s.db.WithContext(ctx).Model(&model.SyncTask{}).Where("id IN ?", ids).Updates(markRunningUpdates()).Error
 }
 
 func (s *MySQLStore) MarkResultUnsaved(ctx context.Context, id int32, lastError string) error {
@@ -150,18 +185,8 @@ func (s *MySQLStore) MarkResultUnsaved(ctx context.Context, id int32, lastError 
 }
 
 func (s *MySQLStore) Finish(ctx context.Context, id int32, trigger string, result Result) error {
-	lastError := result.Message
-	if result.Status == "success" || result.Status == "skipped" {
-		lastError = ""
-	}
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		err := tx.Model(&model.SyncTask{}).Where("id = ?", id).Updates(map[string]interface{}{
-			"last_status":    result.Status,
-			"last_digest":    result.LastDigest,
-			"last_error":     lastError,
-			"last_synced_at": result.FinishedAt,
-			"next_run_at":    result.NextRunAt,
-		}).Error
+		err := tx.Model(&model.SyncTask{}).Where("id = ?", id).Updates(finishTaskUpdates(result)).Error
 		if err != nil {
 			return err
 		}
@@ -187,11 +212,8 @@ func (s *MySQLStore) ResetRunning(ctx context.Context, now time.Time) error {
 		if len(ids) == 0 {
 			return nil
 		}
-		status, message, trigger, _ := Interrupted("running")
-		err := tx.Model(&model.SyncTask{}).Where("id IN ?", ids).Updates(map[string]interface{}{
-			"last_status": status,
-			"last_error":  message,
-		}).Error
+		updates, status, message, trigger := resetRunningUpdates()
+		err := tx.Model(&model.SyncTask{}).Where("id IN ?", ids).Updates(updates).Error
 		if err != nil {
 			return err
 		}

@@ -192,6 +192,7 @@ func toWebTask(row model.SyncTask) SyncTask {
 		Enabled:            row.Enabled,
 		LastDigest:         row.LastDigest,
 		LastStatus:         row.LastStatus,
+		ProgressPhase:      row.ProgressPhase,
 		LastError:          row.LastError,
 		LastSyncedAt:       row.LastSyncedAt,
 		NextRunAt:          row.NextRunAt,
@@ -299,8 +300,8 @@ func (s *MySQLStore) CreateTask(ctx context.Context, task SyncTask, now time.Tim
 		Create(&row).Error
 }
 
-func (s *MySQLStore) UpdateTask(ctx context.Context, task SyncTask, now time.Time) error {
-	return s.db.WithContext(ctx).Model(&model.SyncTask{}).Where("id = ?", task.ID).Updates(map[string]interface{}{
+func taskFieldUpdates(task SyncTask, now time.Time) map[string]interface{} {
+	return map[string]interface{}{
 		"name":                 task.Name,
 		"source_image":         task.SourceImage,
 		"source_credential_id": nullInt32(task.SourceCredentialID),
@@ -312,7 +313,11 @@ func (s *MySQLStore) UpdateTask(ctx context.Context, task SyncTask, now time.Tim
 		"last_digest":          task.LastDigest,
 		"next_run_at":          nullTime(task.NextRunAt),
 		"updated_at":           now,
-	}).Error
+	}
+}
+
+func (s *MySQLStore) UpdateTask(ctx context.Context, task SyncTask, now time.Time) error {
+	return s.db.WithContext(ctx).Model(&model.SyncTask{}).Where("id = ?", task.ID).Updates(taskFieldUpdates(task, now)).Error
 }
 
 func (s *MySQLStore) DeleteTask(ctx context.Context, id int32) error {
@@ -322,14 +327,18 @@ func (s *MySQLStore) DeleteTask(ctx context.Context, id int32) error {
 // SetEnabled 切换任务开关。重新启用且 interval_seconds > 0 时，把 next_run_at 设为 now，
 // 使下一次调度会检查（对照 spec：关闭后再启用）。间隔为 0 时不改 next_run_at。
 // 关闭只更新 enabled。web 测试用假存储断言 enabled，不连接数据库。
-func (s *MySQLStore) SetEnabled(ctx context.Context, id int32, enabled bool, now time.Time) error {
+func enabledUpdates(enabled bool, now time.Time) map[string]interface{} {
 	updates := map[string]interface{}{
 		"enabled": enabled,
 	}
 	if enabled {
 		updates["next_run_at"] = gorm.Expr("CASE WHEN interval_seconds > 0 THEN ? ELSE next_run_at END", now)
 	}
-	return s.db.WithContext(ctx).Model(&model.SyncTask{}).Where("id = ?", id).Updates(updates).Error
+	return updates
+}
+
+func (s *MySQLStore) SetEnabled(ctx context.Context, id int32, enabled bool, now time.Time) error {
+	return s.db.WithContext(ctx).Model(&model.SyncTask{}).Where("id = ?", id).Updates(enabledUpdates(enabled, now)).Error
 }
 
 func nullTime(t *time.Time) interface{} {
