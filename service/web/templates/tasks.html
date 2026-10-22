@@ -46,7 +46,7 @@
 <div class="actions">
 <a class="btn" href="/tasks/{{.ID}}/edit">编辑</a>
 {{if eq .LastStatus "running"}}
-<a class="btn" href="/tasks/{{.ID}}">同步详情</a>
+<a class="btn" href="/logs">同步详情</a>
 {{else}}
 <form action="/tasks/{{.ID}}/sync" method="post">
 <input type="hidden" name="csrf" value="{{$.CSRF}}">

@@ -218,30 +218,50 @@ func (s *MySQLStore) GetTask(ctx context.Context, id int32) (SyncTask, error) {
 	return toWebTask(row), nil
 }
 
-// ListLogs 按 id 倒序返回指定页。调用方按该顺序展示，不再排序。
-func (s *MySQLStore) ListLogs(ctx context.Context, taskID int32, page, size int) ([]SyncLog, int, error) {
+type syncLogRow struct {
+	ID           int32
+	SyncTaskID   int32
+	TaskName     string
+	Trigger      string
+	Status       string
+	SourceDigest string
+	Message      string
+	StartedAt    time.Time
+	FinishedAt   time.Time
+}
+
+// ListAllLogs 按 id 倒序返回全部任务的指定页。调用方按该顺序展示，不再排序。
+func (s *MySQLStore) ListAllLogs(ctx context.Context, page, size int) ([]SyncLog, int, error) {
 	if page < 1 {
 		page = 1
 	}
 	if size < 1 {
 		size = syncLogPageSize
 	}
+	logTable := s.table("sync_log")
+	taskTable := s.table("sync_task")
+	from := fmt.Sprintf("%s AS sync_log", logTable)
 	var total int64
-	if err := s.db.WithContext(ctx).Model(&model.SyncLog{}).Where("sync_task_id = ?", taskID).Count(&total).Error; err != nil {
+	if err := s.db.WithContext(ctx).Table(from).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	var rows []model.SyncLog
-	if err := s.db.WithContext(ctx).
-		Where("sync_task_id = ?", taskID).
-		Order("id DESC").
+	var rows []syncLogRow
+	err := s.db.WithContext(ctx).
+		Table(from).
+		Select("sync_log.id, sync_log.sync_task_id, sync_task.name AS task_name, sync_log.trigger, sync_log.status, sync_log.source_digest, sync_log.message, sync_log.started_at, sync_log.finished_at").
+		Joins(fmt.Sprintf("JOIN %s AS sync_task ON sync_task.id = sync_log.sync_task_id", taskTable)).
+		Order("sync_log.id DESC").
 		Limit(size).
 		Offset((page - 1) * size).
-		Find(&rows).Error; err != nil {
+		Scan(&rows).Error
+	if err != nil {
 		return nil, 0, err
 	}
 	out := make([]SyncLog, len(rows))
 	for i, row := range rows {
 		out[i] = SyncLog{
+			TaskID:       row.SyncTaskID,
+			TaskName:     row.TaskName,
 			Trigger:      row.Trigger,
 			Status:       row.Status,
 			SourceDigest: row.SourceDigest,

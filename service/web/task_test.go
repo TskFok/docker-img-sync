@@ -37,7 +37,7 @@ func (f *fakeTaskStore) GetTask(ctx context.Context, id int32) (SyncTask, error)
 	return SyncTask{}, errors.New("任务不存在")
 }
 
-func (f *fakeTaskStore) ListLogs(ctx context.Context, taskID int32, page, size int) ([]SyncLog, int, error) {
+func (f *fakeTaskStore) ListAllLogs(ctx context.Context, page, size int) ([]SyncLog, int, error) {
 	total := len(f.logs)
 	if page < 1 {
 		page = 1
@@ -424,8 +424,8 @@ func TestTaskSyncActionFollowsRunningStatus(t *testing.T) {
 	if !strings.Contains(listBody, `action="/tasks/1/sync"`) || !strings.Contains(listBody, "立即同步") {
 		t.Fatalf("空闲任务应保留立即同步: %s", listBody)
 	}
-	if !strings.Contains(listBody, `href="/tasks/2">同步详情</a>`) {
-		t.Fatalf("同步中任务应显示同步详情: %s", listBody)
+	if !strings.Contains(listBody, `href="/logs">同步详情</a>`) {
+		t.Fatalf("同步中任务应进入同步记录: %s", listBody)
 	}
 	if strings.Contains(listBody, `action="/tasks/2/sync"`) {
 		t.Fatalf("同步中任务不应再提交立即同步: %s", listBody)
@@ -439,8 +439,11 @@ func TestTaskSyncActionFollowsRunningStatus(t *testing.T) {
 		t.Fatalf("详情 status=%d body=%s", runningRec.Code, runningRec.Body.String())
 	}
 	runningBody := runningRec.Body.String()
-	if !strings.Contains(runningBody, `href="#sync-logs">同步详情</a>`) || !strings.Contains(runningBody, `id="sync-logs"`) {
-		t.Fatalf("同步中详情应链到同步记录: %s", runningBody)
+	if !strings.Contains(runningBody, `href="/logs">同步详情</a>`) {
+		t.Fatalf("同步中详情应进入同步记录: %s", runningBody)
+	}
+	if strings.Contains(runningBody, `id="sync-logs"`) || strings.Contains(runningBody, `class="logs"`) {
+		t.Fatalf("任务详情不应再内嵌同步记录: %s", runningBody)
 	}
 	if strings.Contains(runningBody, `action="/tasks/2/sync"`) || strings.Contains(runningBody, "立即同步") {
 		t.Fatalf("同步中详情不应再提交立即同步: %s", runningBody)
@@ -577,6 +580,8 @@ func TestTaskDetailClipsOverflowLogText(t *testing.T) {
 			LastStatus:      "failed",
 		}},
 		logs: []SyncLog{{
+			TaskID:       7,
+			TaskName:     `发布任务 <b>`,
 			Trigger:      "manual",
 			Status:       "failed",
 			SourceDigest: digest,
@@ -587,7 +592,7 @@ func TestTaskDetailClipsOverflowLogText(t *testing.T) {
 	}
 	h := testTaskRouter(store, nil)
 	cookie := doLogin(t, h)
-	req := httptest.NewRequest(http.MethodGet, "/tasks/7", nil)
+	req := httptest.NewRequest(http.MethodGet, "/logs", nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -595,24 +600,39 @@ func TestTaskDetailClipsOverflowLogText(t *testing.T) {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	escaped := html.EscapeString(message)
+	escapedMessage := html.EscapeString(message)
+	escapedName := html.EscapeString(`发布任务 <b>`)
 	for _, want := range []string{
 		`class="logs"`,
 		`class="clip-visible"`,
 		`class="clip-pop" role="tooltip"`,
 		`text-overflow: ellipsis`,
+		`href="/tasks/7"`,
+		escapedName,
 		digest,
-		escaped,
+		escapedMessage,
+		`href="/logs" aria-current="page"`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Fatalf("详情页应包含 %q", want)
+			t.Fatalf("同步记录页应包含 %q", want)
 		}
 	}
-	if strings.Contains(body, "<tag") {
-		t.Fatal("说明中的 HTML 应被转义")
+	if strings.Contains(body, "<tag") || strings.Contains(body, "<b>") {
+		t.Fatal("任务名和说明中的 HTML 应被转义")
 	}
-	if strings.Count(body, escaped) != 2 || strings.Count(body, digest) < 2 {
-		t.Fatalf("摘要和说明应同时保留可见文本与悬停全文")
+	if strings.Count(body, escapedMessage) != 2 || strings.Count(body, digest) < 2 || strings.Count(body, escapedName) != 2 {
+		t.Fatalf("任务名、摘要和说明应同时保留可见文本与悬停全文")
+	}
+
+	detail := httptest.NewRequest(http.MethodGet, "/tasks/7", nil)
+	detail.AddCookie(cookie)
+	detailRec := httptest.NewRecorder()
+	h.ServeHTTP(detailRec, detail)
+	if detailRec.Code != http.StatusOK {
+		t.Fatalf("详情 status=%d body=%s", detailRec.Code, detailRec.Body.String())
+	}
+	if strings.Contains(detailRec.Body.String(), `class="logs"`) || strings.Contains(detailRec.Body.String(), escapedMessage) {
+		t.Fatal("任务详情不应再显示同步记录")
 	}
 }
 
@@ -687,7 +707,7 @@ func detailLogs(n int) []SyncLog {
 	return logs
 }
 
-func taskDetailPage(t *testing.T, logs []SyncLog, rawURL string) string {
+func logsPage(t *testing.T, logs []SyncLog, rawURL string) string {
 	t.Helper()
 	h := testTaskRouter(&fakeTaskStore{
 		tasks: []SyncTask{{ID: 7, Name: "nginx", LastStatus: "idle"}},
@@ -704,8 +724,8 @@ func taskDetailPage(t *testing.T, logs []SyncLog, rawURL string) string {
 	return rec.Body.String()
 }
 
-func TestTaskDetailPaginatesSyncLogs(t *testing.T) {
-	body := taskDetailPage(t, detailLogs(21), "/tasks/7")
+func TestLogsPagePaginatesSyncLogs(t *testing.T) {
+	body := logsPage(t, detailLogs(21), "/logs")
 	if strings.Count(body, `data-label="触发"`) != 20 {
 		t.Fatalf("第一页应只显示 20 条同步记录: %s", body)
 	}
@@ -719,7 +739,7 @@ func TestTaskDetailPaginatesSyncLogs(t *testing.T) {
 		`aria-label="同步记录分页"`,
 		`第 1 / 2 页`,
 		`共 21 条`,
-		`href="/tasks/7?page=2"`,
+		`href="/logs?page=2"`,
 		`aria-disabled="true"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -731,8 +751,8 @@ func TestTaskDetailPaginatesSyncLogs(t *testing.T) {
 	}
 }
 
-func TestTaskDetailSyncLogSecondPage(t *testing.T) {
-	body := taskDetailPage(t, detailLogs(21), "/tasks/7?page=2")
+func TestLogsPageSyncLogSecondPage(t *testing.T) {
+	body := logsPage(t, detailLogs(21), "/logs?page=2")
 	if strings.Count(body, `data-label="触发"`) != 1 || !strings.Contains(body, "记录-21") {
 		t.Fatal("第二页应只显示剩余的一条记录")
 	}
@@ -742,67 +762,60 @@ func TestTaskDetailSyncLogSecondPage(t *testing.T) {
 	for _, want := range []string{
 		`第 2 / 2 页`,
 		`共 21 条`,
-		`href="/tasks/7">上一页</a>`,
+		`href="/logs">上一页</a>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("第二页应包含 %q", want)
 		}
 	}
-	if strings.Contains(body, `href="/tasks/7?page=3"`) || strings.Contains(body, ">下一页</a>") {
+	if strings.Contains(body, `href="/logs?page=3"`) || strings.Contains(body, ">下一页</a>") {
 		t.Fatal("最后一页不应有下一页链接")
 	}
 }
 
-func TestTaskDetailInvalidLogPageShowsFirstPage(t *testing.T) {
-	for _, rawURL := range []string{"/tasks/7?page=0", "/tasks/7?page=-4", "/tasks/7?page=abc"} {
-		body := taskDetailPage(t, detailLogs(21), rawURL)
+func TestLogsPageInvalidPageShowsFirstPage(t *testing.T) {
+	for _, rawURL := range []string{"/logs?page=0", "/logs?page=-4", "/logs?page=abc"} {
+		body := logsPage(t, detailLogs(21), rawURL)
 		if !strings.Contains(body, "记录-01") || strings.Contains(body, "记录-21") {
 			t.Fatalf("%s 应回到第一页", rawURL)
 		}
 	}
 }
 
-func TestTaskDetailLogPagePastEndRedirectsToLastPage(t *testing.T) {
+func TestLogsPagePastEndRedirectsToLastPage(t *testing.T) {
 	h := testTaskRouter(&fakeTaskStore{
 		tasks: []SyncTask{{ID: 7, Name: "nginx", LastStatus: "idle"}},
 		logs:  detailLogs(21),
 	}, nil)
 	cookie := doLogin(t, h)
-	req := httptest.NewRequest(http.MethodGet, "/tasks/7?page=9&msg=已完成", nil)
+	req := httptest.NewRequest(http.MethodGet, "/logs?page=9", nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusFound {
 		t.Fatalf("超出末页应跳转，status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	q := url.Values{}
-	q.Set("msg", "已完成")
-	q.Set("page", "2")
-	want := "/tasks/7?" + q.Encode()
-	if rec.Header().Get("Location") != want {
-		t.Fatalf("Location=%q，期望 %q", rec.Header().Get("Location"), want)
+	if rec.Header().Get("Location") != "/logs?page=2" {
+		t.Fatalf("Location=%q，期望 /logs?page=2", rec.Header().Get("Location"))
 	}
 }
 
-func TestTaskDetailLogPagerKeepsMessage(t *testing.T) {
-	body := taskDetailPage(t, detailLogs(21), "/tasks/7?page=2&msg=已完成")
-	if !strings.Contains(body, "已完成") {
-		t.Fatal("翻页后应保留提示")
-	}
-	q := url.Values{}
-	q.Set("msg", "已完成")
-	prev := "/tasks/7?" + q.Encode()
-	if !strings.Contains(body, `href="`+prev+`"`) {
-		t.Fatalf("上一页应保留提示: %s", body)
-	}
-}
-
-func TestTaskDetailOmitsPagerForSinglePage(t *testing.T) {
-	body := taskDetailPage(t, detailLogs(3), "/tasks/7")
+func TestLogsPageOmitsPagerForSinglePage(t *testing.T) {
+	body := logsPage(t, detailLogs(3), "/logs")
 	if strings.Contains(body, `aria-label="同步记录分页"`) {
 		t.Fatal("不足一页时不显示分页")
 	}
 	if strings.Count(body, `data-label="触发"`) != 3 {
 		t.Fatal("不足一页时应显示全部记录")
+	}
+}
+
+func TestLogsPageEmpty(t *testing.T) {
+	body := logsPage(t, nil, "/logs")
+	if !strings.Contains(body, "还没有同步记录") {
+		t.Fatalf("没有记录时应显示空状态: %s", body)
+	}
+	if strings.Contains(body, `class="logs"`) {
+		t.Fatal("没有记录时不应显示表格")
 	}
 }

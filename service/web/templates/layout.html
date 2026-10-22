@@ -78,6 +78,7 @@ a:hover { color: #174f42; }
 }
 .brand strong { display: block; font-size: 16px; letter-spacing: -0.01em; }
 .brand small { display: block; color: var(--sidebar-muted); font-size: 13px; }
+.side-menu { display: flex; flex-direction: column; gap: 18px; }
 .side-label {
   margin: 8px 8px 0;
   color: var(--sidebar-muted);
@@ -168,11 +169,13 @@ h2 { margin: 28px 0 12px; font-size: 20px; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 .logs { table-layout: fixed; }
-.logs .col-trigger { width: 12%; }
-.logs .col-status { width: 15%; }
-.logs .col-digest { width: 20%; }
-.logs .col-message { width: 29%; }
-.logs .col-time { width: 12%; }
+.logs .col-task { width: 14%; }
+.logs .col-trigger { width: 11%; }
+.logs .col-status { width: 13%; }
+.logs .col-digest { width: 18%; }
+.logs .col-message { width: 24%; }
+.logs .col-time { width: 10%; }
+.side-nav a.nav-plain { padding-left: 50px; }
 .task-list { table-layout: fixed; }
 .credential-list { table-layout: fixed; }
 .registry-list { table-layout: fixed; }
@@ -435,18 +438,13 @@ legend { padding: 0 6px; font-weight: 700; }
     grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
       "brand logout"
-      "label label"
-      "nav nav";
+      "menu menu";
     align-items: center;
     gap: 10px 12px;
   }
   .brand { grid-area: brand; }
-  .side-label { grid-area: label; margin: 4px 8px 0; }
-  .side-nav {
-    grid-area: nav;
-    display: flex;
-    flex-direction: column;
-  }
+  .side-menu { grid-area: menu; }
+  .side-label { margin: 4px 8px 0; }
   .side-nav a { min-width: 0; width: 100%; min-height: 44px; }
   .logout { grid-area: logout; margin-top: 0; }
   .logout button { width: auto; padding: 0 12px; }
@@ -527,6 +525,8 @@ legend { padding: 0 6px; font-weight: 700; }
 <small>仓库复制控制台</small>
 </span>
 </a>
+<div class="side-menu">
+<div>
 <p class="side-label">配置顺序</p>
 <nav class="side-nav" aria-label="主导航">
 <a href="/credentials"{{if eq .Nav "credentials"}} aria-current="page"{{end}}>
@@ -542,6 +542,16 @@ legend { padding: 0 6px; font-weight: 700; }
 <span class="nav-copy"><strong>同步任务</strong><small>复制镜像</small></span>
 </a>
 </nav>
+</div>
+<div>
+<p class="side-label">记录</p>
+<nav class="side-nav" aria-label="同步记录">
+<a class="nav-plain" href="/logs"{{if eq .Nav "logs"}} aria-current="page"{{end}}>
+<span class="nav-copy"><strong>同步记录</strong><small>全部结果</small></span>
+</a>
+</nav>
+</div>
+</div>
 <form class="logout" action="/logout" method="post">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
 <button type="submit">退出登录</button>

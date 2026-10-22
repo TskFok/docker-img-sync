@@ -72,6 +72,7 @@ func NewRouter(deps Deps) http.Handler {
 		r.Get("/registries/{id}/edit", s.handleRegistryEdit)
 		r.Post("/registries/{id}/delete", s.handleRegistryDelete)
 		r.Post("/registries/{id}", s.handleRegistryUpdate)
+		r.Get("/logs", s.handleLogList)
 		r.Get("/tasks", s.handleTaskList)
 		r.Get("/tasks/new", s.handleTaskNew)
 		r.Post("/tasks", s.handleTaskCreate)
@@ -251,6 +252,9 @@ func withPageMeta(name string, page pageData) pageData {
 	case "task_detail":
 		page.Nav = "tasks"
 		page.Title = "同步任务详情 · 镜像同步"
+	case "logs":
+		page.Nav = "logs"
+		page.Title = "同步记录 · 镜像同步"
 	}
 	return page
 }

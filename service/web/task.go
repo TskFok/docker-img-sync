@@ -103,6 +103,8 @@ func statusText(status string) string {
 }
 
 type SyncLog struct {
+	TaskID       int32
+	TaskName     string
 	Trigger      string
 	Status       string
 	SourceDigest string
@@ -114,7 +116,7 @@ type SyncLog struct {
 type TaskStore interface {
 	ListTasks(ctx context.Context) ([]SyncTask, error)
 	GetTask(ctx context.Context, id int32) (SyncTask, error)
-	ListLogs(ctx context.Context, taskID int32, page, size int) ([]SyncLog, int, error)
+	ListAllLogs(ctx context.Context, page, size int) ([]SyncLog, int, error)
 	CreateTask(ctx context.Context, task SyncTask, now time.Time) error
 	UpdateTask(ctx context.Context, task SyncTask, now time.Time) error
 	DeleteTask(ctx context.Context, id int32) error
@@ -178,30 +180,35 @@ func (s *server) handleTaskDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "任务不存在", http.StatusNotFound)
 		return
 	}
+	s.render(w, "task_detail", pageData{
+		CSRF:    sessionFromCtx(r.Context()).CSRF,
+		Task:    task,
+		Message: r.URL.Query().Get("msg"),
+	})
+}
+
+func (s *server) handleLogList(w http.ResponseWriter, r *http.Request) {
 	page := parseLogPage(r.URL.Query().Get("page"))
-	msg := r.URL.Query().Get("msg")
-	logs, total, err := s.deps.Tasks.ListLogs(r.Context(), id, page, syncLogPageSize)
+	logs, total, err := s.deps.Tasks.ListAllLogs(r.Context(), page, syncLogPageSize)
 	if err != nil {
 		http.Error(w, "读取同步记录失败", http.StatusInternalServerError)
 		return
 	}
 	pages := logPageCount(total, syncLogPageSize)
 	if pages > 0 && page > pages {
-		http.Redirect(w, r, taskDetailURL(id, pages, msg), http.StatusFound)
+		http.Redirect(w, r, logListURL(pages), http.StatusFound)
 		return
 	}
 	var prevURL, nextURL string
 	if page > 1 {
-		prevURL = taskDetailURL(id, page-1, msg)
+		prevURL = logListURL(page - 1)
 	}
 	if page < pages {
-		nextURL = taskDetailURL(id, page+1, msg)
+		nextURL = logListURL(page + 1)
 	}
-	s.render(w, "task_detail", pageData{
+	s.render(w, "logs", pageData{
 		CSRF:       sessionFromCtx(r.Context()).CSRF,
-		Task:       task,
 		Logs:       logs,
-		Message:    msg,
 		LogPage:    page,
 		LogPages:   pages,
 		LogTotal:   total,
@@ -233,19 +240,11 @@ func logPageCount(total, size int) int {
 	return (total + size - 1) / size
 }
 
-func taskDetailURL(id int32, page int, msg string) string {
-	q := url.Values{}
+func logListURL(page int) string {
 	if page > 1 {
-		q.Set("page", strconv.Itoa(page))
+		return "/logs?page=" + strconv.Itoa(page)
 	}
-	if msg != "" {
-		q.Set("msg", msg)
-	}
-	path := "/tasks/" + strconv.FormatInt(int64(id), 10)
-	if encoded := q.Encode(); encoded != "" {
-		return path + "?" + encoded
-	}
-	return path
+	return "/logs"
 }
 
 func (s *server) handleTaskEdit(w http.ResponseWriter, r *http.Request) {

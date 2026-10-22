@@ -233,12 +233,14 @@ func TestCredentialsNavMarksCurrentStep(t *testing.T) {
 		`href="/credentials" aria-current="page"`,
 		`href="/registries"`,
 		`href="/tasks"`,
+		`href="/logs"`,
+		"同步记录",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("登录信息页应含 %s: %s", want, body)
 		}
 	}
-	if strings.Contains(body, `href="/registries" aria-current="page"`) || strings.Contains(body, `href="/tasks" aria-current="page"`) {
+	if strings.Contains(body, `href="/registries" aria-current="page"`) || strings.Contains(body, `href="/tasks" aria-current="page"`) || strings.Contains(body, `href="/logs" aria-current="page"`) {
 		t.Fatalf("当前步骤不应标到其他导航: %s", body)
 	}
 }

@@ -23,7 +23,7 @@
 <div class="actions">
 <a class="btn" href="/tasks/{{.Task.ID}}/edit">编辑</a>
 {{if eq .Task.LastStatus "running"}}
-<a class="btn btn-primary" href="#sync-logs">同步详情</a>
+<a class="btn btn-primary" href="/logs">同步详情</a>
 {{else}}
 <form action="/tasks/{{.Task.ID}}/sync" method="post">
 <input type="hidden" name="csrf" value="{{.CSRF}}">
@@ -40,49 +40,5 @@
 <button class="btn btn-danger" type="submit">删除</button>
 </form>
 </div>
-<h2 id="sync-logs">同步记录</h2>
-<section class="panel">
-{{if .Logs}}
-<div class="table-wrap">
-<table class="logs">
-<colgroup>
-<col class="col-trigger">
-<col class="col-status">
-<col class="col-digest">
-<col class="col-message">
-<col class="col-time">
-<col class="col-time">
-</colgroup>
-<thead>
-<tr><th>触发</th><th>状态</th><th>摘要</th><th>说明</th><th>开始</th><th>结束</th></tr>
-</thead>
-<tbody>
-{{range .Logs}}
-<tr>
-<td data-label="触发">{{.TriggerText}} <span class="badge-code">{{.Trigger}}</span></td>
-<td data-label="状态"><span class="badge badge-{{.Status}}">{{.StatusText}} <span class="badge-code">{{.Status}}</span></span></td>
-<td data-label="摘要" class="clip"><span class="clip-text mono"{{if .SourceDigest}} tabindex="0"{{end}}><span class="clip-visible">{{.SourceDigest}}</span>{{if .SourceDigest}}<span class="clip-pop" role="tooltip">{{.SourceDigest}}</span>{{end}}</span></td>
-<td data-label="说明" class="clip"><span class="clip-text"{{if .Message}} tabindex="0"{{end}}><span class="clip-visible">{{.Message}}</span>{{if .Message}}<span class="clip-pop" role="tooltip">{{.Message}}</span>{{end}}</span></td>
-<td data-label="开始">{{.StartedAt.Format "2006-01-02 15:04:05"}}</td>
-<td data-label="结束">{{.FinishedAt.Format "2006-01-02 15:04:05"}}</td>
-</tr>
-{{end}}
-</tbody>
-</table>
-</div>
-{{if gt .LogPages 1}}
-<nav class="pager" aria-label="同步记录分页">
-{{if .LogPrevURL}}<a class="btn" href="{{.LogPrevURL}}">上一页</a>{{else}}<span class="btn" aria-disabled="true">上一页</span>{{end}}
-<span class="pager-status">第 {{.LogPage}} / {{.LogPages}} 页，共 {{.LogTotal}} 条</span>
-{{if .LogNextURL}}<a class="btn" href="{{.LogNextURL}}">下一页</a>{{else}}<span class="btn" aria-disabled="true">下一页</span>{{end}}
-</nav>
-{{end}}
-{{else}}
-<div class="empty">
-<strong>还没有同步记录</strong>
-<p>可以先手动同步一次，结果会记在这里。</p>
-</div>
-{{end}}
-</section>
 {{template "foot" .}}
 {{end}}
