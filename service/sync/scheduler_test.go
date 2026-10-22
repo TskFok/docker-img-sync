@@ -21,6 +21,12 @@ type unsavedCall struct {
 	ctx       context.Context
 }
 
+type phaseCall struct {
+	id    int32
+	phase string
+	ctx   context.Context
+}
+
 type fakeStore struct {
 	mu         gosync.Mutex
 	due        []Task
@@ -34,6 +40,8 @@ type fakeStore struct {
 	finishCtxs []context.Context
 	unsaved    []unsavedCall
 	unsavedCh  chan struct{}
+	phases     []phaseCall
+	phaseErr   error
 }
 
 func newFakeStore() *fakeStore {
@@ -109,6 +117,16 @@ func (f *fakeStore) Get(ctx context.Context, id int32) (Task, error) {
 		return Task{}, errors.New("任务不存在")
 	}
 	return task, nil
+}
+
+func (f *fakeStore) SetPhase(ctx context.Context, id int32, phase string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.phaseErr != nil {
+		return f.phaseErr
+	}
+	f.phases = append(f.phases, phaseCall{id: id, phase: phase, ctx: ctx})
+	return nil
 }
 
 func waitFinishes(t *testing.T, ch <-chan finishCall, n int) []finishCall {
@@ -302,5 +320,72 @@ func TestTickDoesNotRerunInFlightSyncNow(t *testing.T) {
 	store.mu.Unlock()
 	if n != 1 {
 		t.Fatalf("Finish count %d", n)
+	}
+}
+
+func TestSyncNowRecordsSkipPhase(t *testing.T) {
+	store := newFakeStore()
+	store.byID[3] = sampleTask(3, "sha256:same", "idle")
+	s := NewScheduler(store, &fakeEngine{digest: "sha256:same"})
+	ctx := context.WithValue(context.Background(), phaseCtxKey{}, "manual")
+	if err := s.SyncNow(ctx, 3); err != nil {
+		t.Fatal(err)
+	}
+	finishes := waitFinishes(t, store.finishCh, 1)
+	if finishes[0].result.Status != "skipped" {
+		t.Fatalf("finish %+v", finishes[0])
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.phases) != 1 || store.phases[0].id != 3 || store.phases[0].phase != PhaseDigest {
+		t.Fatalf("phases=%+v", store.phases)
+	}
+	if store.phases[0].ctx.Value(phaseCtxKey{}) != "manual" {
+		t.Fatal("阶段写入应使用这次同步的 context")
+	}
+}
+
+func TestSyncNowPhaseSaveFailureDoesNotDigest(t *testing.T) {
+	store := newFakeStore()
+	store.byID[3] = sampleTask(3, "sha256:old", "idle")
+	store.phaseErr = errors.New("dial tcp: password leaked")
+	eng := &fakeEngine{digest: "sha256:new"}
+	s := NewScheduler(store, eng)
+	if err := s.SyncNow(context.Background(), 3); err != nil {
+		t.Fatal(err)
+	}
+	finishes := waitFinishes(t, store.finishCh, 1)
+	if finishes[0].result.Status != "failed" || finishes[0].result.Message != phaseSaveMessage || strings.Contains(finishes[0].result.Message, "password") {
+		t.Fatalf("finish %+v", finishes[0])
+	}
+	if eng.digestCalls != 0 || eng.copyCount != 0 {
+		t.Fatalf("digestCalls=%d copy=%d", eng.digestCalls, eng.copyCount)
+	}
+}
+
+type phaseCtxKey struct{}
+
+func TestSyncNowRecordsCopyPhases(t *testing.T) {
+	store := newFakeStore()
+	store.byID[4] = sampleTask(4, "sha256:old", "idle")
+	s := NewScheduler(store, &fakeEngine{digest: "sha256:new"})
+	if err := s.SyncNow(context.Background(), 4); err != nil {
+		t.Fatal(err)
+	}
+	finishes := waitFinishes(t, store.finishCh, 1)
+	if finishes[0].result.Status != "success" {
+		t.Fatalf("finish %+v", finishes[0])
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	got := make([]string, len(store.phases))
+	for i, phase := range store.phases {
+		got[i] = phase.phase
+		if phase.id != 4 {
+			t.Fatalf("phase %+v", phase)
+		}
+	}
+	if strings.Join(got, ",") != PhaseDigest+","+PhaseManifest+","+PhaseCopy {
+		t.Fatalf("phases=%v", got)
 	}
 }

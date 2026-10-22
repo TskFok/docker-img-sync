@@ -23,6 +23,7 @@ type Store interface {
 	MarkResultUnsaved(ctx context.Context, id int32, lastError string) error
 	ResetRunning(ctx context.Context, now time.Time) error
 	Get(ctx context.Context, id int32) (Task, error)
+	SetPhase(ctx context.Context, id int32, phase string) error
 }
 
 type Scheduler struct {
@@ -97,7 +98,12 @@ func (s *Scheduler) run(ctx context.Context, task Task, trigger string) {
 	defer s.unclaim(task.ID)
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
-	result := Run(ctx, s.eng, task, time.Now, func(string) error { return nil })
+	result := Run(ctx, s.eng, task, time.Now, func(phase string) error {
+		if err := s.store.SetPhase(ctx, task.ID, phase); err != nil {
+			return errPhaseSave
+		}
+		return nil
+	})
 	s.persistResult(task.ID, trigger, result)
 }
 
