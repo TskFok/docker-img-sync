@@ -151,10 +151,36 @@ func finishTaskUpdates(result Result) map[string]interface{} {
 		"last_synced_at": result.FinishedAt,
 		"next_run_at":    result.NextRunAt,
 	}
+	if result.Status == "success" {
+		updates["last_success_at"] = result.FinishedAt
+	}
 	if result.Status == "success" || result.Status == "skipped" {
 		updates["progress_phase"] = ""
 	}
 	return updates
+}
+
+func lastSuccessBackfillSQL(taskTable, logTable string) string {
+	return fmt.Sprintf(`UPDATE %s AS sync_task
+JOIN (
+  SELECT sync_task_id, MAX(finished_at) AS finished_at
+  FROM %s
+  WHERE status = ?
+  GROUP BY sync_task_id
+) AS latest ON latest.sync_task_id = sync_task.id
+SET sync_task.last_success_at = latest.finished_at
+WHERE sync_task.last_success_at IS NULL`, taskTable, logTable)
+}
+
+func (s *MySQLStore) BackfillLastSuccess(ctx context.Context) error {
+	err := s.db.WithContext(ctx).Exec(
+		lastSuccessBackfillSQL(s.table("sync_task"), s.table("sync_log")),
+		"success",
+	).Error
+	if err != nil {
+		return fmt.Errorf("回填上次成功同步时间失败: %w", err)
+	}
+	return nil
 }
 
 func resetRunningUpdates() (updates map[string]interface{}, status, message, trigger string) {

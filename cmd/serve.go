@@ -33,6 +33,10 @@ var serveCmd = &cobra.Command{
 		}
 		engine := syncsvc.NewCrane()
 		syncStore := syncsvc.NewMySQLStore(global.DataBase, global.CredentialKey)
+		if err := syncStore.BackfillLastSuccess(ctx); err != nil {
+			fmt.Println(err.Error())
+			os.Exit(1)
+		}
 		sched := syncsvc.NewScheduler(syncStore, engine)
 		if err := sched.Start(ctx); err != nil {
 			fmt.Println(err.Error())

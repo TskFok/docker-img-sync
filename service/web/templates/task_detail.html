@@ -19,6 +19,7 @@
 <div><dt>状态</dt><dd><span class="badge badge-{{.Task.LastStatus}}">{{.Task.StatusText}} <span class="badge-code">{{.Task.LastStatus}}</span></span></dd></div>
 {{if .Task.ProgressPhase}}<div><dt>阶段</dt><dd>{{.Task.PhaseText}}</dd></div>{{end}}
 {{if .Task.LastSyncedAt}}<div><dt>最近同步</dt><dd>{{.Task.LastSyncedAt.Format "2006-01-02 15:04:05"}}</dd></div>{{end}}
+<div><dt>上次成功</dt><dd>{{.Task.LastSuccessText}}</dd></div>
 </dl>
 {{if eq .Task.LastStatus "failed"}}<p class="alert alert-error" role="alert">错误：{{.Task.LastError}}</p>{{end}}
 <div class="actions">

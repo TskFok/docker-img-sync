@@ -564,6 +564,45 @@ func TestStatusAndIntervalText(t *testing.T) {
 	if got := (SyncLog{Trigger: "schedule"}).TriggerText(); got != "定时" {
 		t.Fatalf("触发 schedule => %q", got)
 	}
+	successAt := time.Date(2026, 11, 26, 14, 18, 0, 0, time.UTC)
+	withSuccess := SyncTask{LastSuccessAt: &successAt}
+	if !withSuccess.HasLastSuccess() || withSuccess.LastSuccessText() != "2026-11-26 14:18:00" {
+		t.Fatalf("上次成功 = %q", withSuccess.LastSuccessText())
+	}
+	if got := (SyncTask{}).LastSuccessText(); got != "尚未成功" {
+		t.Fatalf("没有成功记录 => %q", got)
+	}
+}
+
+func TestTaskListShowsLastSuccessTime(t *testing.T) {
+	successAt := time.Date(2026, 11, 26, 14, 18, 0, 0, time.UTC)
+	store := &fakeTaskStore{tasks: []SyncTask{
+		{ID: 1, Name: "copied", LastStatus: "failed", LastSuccessAt: &successAt},
+		{ID: 2, Name: "never", LastStatus: "idle"},
+	}}
+	h := testTaskRouter(store, nil)
+	cookie := doLogin(t, h)
+	req := httptest.NewRequest(http.MethodGet, "/tasks", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "上次成功 2026-11-26 14:18:00") {
+		t.Fatal("失败任务仍应显示上一次成功同步的时间")
+	}
+	if !strings.Contains(body, "尚未成功") {
+		t.Fatal("从未成功的任务应显示尚未成功")
+	}
+	detail := httptest.NewRequest(http.MethodGet, "/tasks/1", nil)
+	detail.AddCookie(cookie)
+	detailRec := httptest.NewRecorder()
+	h.ServeHTTP(detailRec, detail)
+	if detailRec.Code != http.StatusOK || !strings.Contains(detailRec.Body.String(), "上次成功") || !strings.Contains(detailRec.Body.String(), "2026-11-26 14:18:00") {
+		t.Fatalf("详情应显示上次成功时间 status=%d body=%s", detailRec.Code, detailRec.Body.String())
+	}
 }
 
 func TestTaskListClipsOverflowFields(t *testing.T) {

@@ -39,6 +39,7 @@ CREATE TABLE `sync_task` (
   `progress_phase` varchar(16) NOT NULL DEFAULT '',
   `last_error` text NOT NULL,
   `last_synced_at` datetime NULL,
+  `last_success_at` datetime NULL,
   `next_run_at` datetime NULL,
   `created_at` datetime NOT NULL,
   `updated_at` datetime NOT NULL,

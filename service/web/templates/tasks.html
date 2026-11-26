@@ -41,6 +41,7 @@
 <td data-label="状态">
 <span class="badge badge-{{.LastStatus}}">{{.StatusText}} <span class="badge-code">{{.LastStatus}}</span></span>
 {{if .ProgressPhase}}<p class="phase-text">{{.PhaseText}}</p>{{end}}
+<p class="phase-text">{{if .HasLastSuccess}}上次成功 {{end}}{{.LastSuccessText}}</p>
 {{if eq .LastStatus "failed"}}<p class="clip-text err-text"{{if .LastError}} tabindex="0"{{end}}><span class="clip-visible">{{.LastError}}</span>{{if .LastError}}<span class="clip-pop" role="tooltip">{{.LastError}}</span>{{end}}</p>{{end}}
 </td>
 <td>

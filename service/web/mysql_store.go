@@ -195,6 +195,7 @@ func toWebTask(row model.SyncTask) SyncTask {
 		ProgressPhase:      row.ProgressPhase,
 		LastError:          row.LastError,
 		LastSyncedAt:       row.LastSyncedAt,
+		LastSuccessAt:      row.LastSuccessAt,
 		NextRunAt:          row.NextRunAt,
 	}
 }

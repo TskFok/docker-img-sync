@@ -17,6 +17,7 @@ type SyncTask struct {
 	ProgressPhase      string     `gorm:"column:progress_phase"`
 	LastError          string     `gorm:"column:last_error"`
 	LastSyncedAt       *time.Time `gorm:"column:last_synced_at"`
+	LastSuccessAt      *time.Time `gorm:"column:last_success_at"`
 	NextRunAt          *time.Time `gorm:"column:next_run_at"`
 	CreatedAt          time.Time  `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt          time.Time  `gorm:"column:updated_at;autoUpdateTime"`

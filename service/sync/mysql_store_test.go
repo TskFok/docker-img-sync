@@ -2,7 +2,9 @@ package sync
 
 import (
 	"errors"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestSplitDecryptFailuresSkipsAndCollectsIDs(t *testing.T) {
@@ -48,6 +50,41 @@ func TestFinishTaskUpdatesClearsPhaseOnlyWhenFinishedCleanly(t *testing.T) {
 	}
 	if failed["last_status"] != "failed" || failed["last_error"] != "拉取失败" {
 		t.Fatalf("%#v", failed)
+	}
+}
+
+func TestFinishTaskUpdatesRecordsLastSuccessOnlyOnSuccess(t *testing.T) {
+	finished := time.Date(2026, 11, 26, 6, 18, 0, 0, time.UTC)
+	success := finishTaskUpdates(Result{Status: "success", FinishedAt: finished})
+	got, ok := success["last_success_at"].(time.Time)
+	if !ok || !got.Equal(finished) {
+		t.Fatalf("成功应写入上次成功时间，得到 %#v", success["last_success_at"])
+	}
+	for _, status := range []string{"skipped", "failed"} {
+		updates := finishTaskUpdates(Result{Status: status, FinishedAt: finished, Message: "未复制"})
+		if _, ok := updates["last_success_at"]; ok {
+			t.Fatalf("%s 不应改上次成功时间: %#v", status, updates)
+		}
+		synced, ok := updates["last_synced_at"].(time.Time)
+		if !ok || !synced.Equal(finished) {
+			t.Fatalf("%s 仍应更新最近同步时间: %#v", status, updates["last_synced_at"])
+		}
+	}
+}
+
+func TestLastSuccessBackfillSQLFillsOnlyMissingTimes(t *testing.T) {
+	sql := lastSuccessBackfillSQL("img_sync_task", "img_sync_log")
+	for _, want := range []string{
+		"UPDATE img_sync_task AS sync_task",
+		"FROM img_sync_log",
+		"WHERE status = ?",
+		"MAX(finished_at)",
+		"SET sync_task.last_success_at = latest.finished_at",
+		"WHERE sync_task.last_success_at IS NULL",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("回填语句缺少 %q\n%s", want, sql)
+		}
 	}
 }
 

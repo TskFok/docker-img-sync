@@ -28,6 +28,7 @@ type SyncTask struct {
 	ProgressPhase      string
 	LastError          string
 	LastSyncedAt       *time.Time
+	LastSuccessAt      *time.Time
 	NextRunAt          *time.Time
 }
 
@@ -65,6 +66,17 @@ func (t SyncTask) IntervalText() string {
 		return "仅手动"
 	}
 	return strconv.Itoa(t.IntervalSeconds) + " 秒"
+}
+
+func (t SyncTask) HasLastSuccess() bool {
+	return t.LastSuccessAt != nil && !t.LastSuccessAt.IsZero()
+}
+
+func (t SyncTask) LastSuccessText() string {
+	if !t.HasLastSuccess() {
+		return "尚未成功"
+	}
+	return t.LastSuccessAt.Format("2006-01-02 15:04:05")
 }
 
 func (l SyncLog) StatusText() string {

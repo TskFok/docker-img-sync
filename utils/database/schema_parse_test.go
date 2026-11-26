@@ -75,6 +75,10 @@ func TestParseSyncTaskDefaultsAndIndex(t *testing.T) {
 	if phase.TypeName != "varchar(16)" || phase.Nullable || !phase.HasDefault || phase.DefaultValue != "" {
 		t.Fatalf("progress_phase = %+v", phase)
 	}
+	lastSuccess := cols["last_success_at"]
+	if lastSuccess.TypeName != "datetime" || !lastSuccess.Nullable || lastSuccess.HasDefault {
+		t.Fatalf("last_success_at = %+v", lastSuccess)
+	}
 	sourceCred := cols["source_credential_id"]
 	if !sourceCred.Nullable || sourceCred.HasDefault {
 		t.Fatalf("source_credential_id = %+v", sourceCred)
